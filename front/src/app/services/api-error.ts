@@ -1,6 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 
 // El backend responde los errores como { message: string | string[] }.
 // Esta funcion saca un texto legible de cualquier error de la API.
