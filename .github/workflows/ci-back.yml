@@ -33,5 +33,13 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Correr los tests
-        run: npm test
+      - name: Correr los tests con cobertura
+        run: npm run test:cov
+
+      - name: Subir cobertura a Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: back/coverage/lcov.info
+          flags: backend
+          name: backend
+          fail_ci_if_error: false #Si codecov falla, el CI no se pone rojo

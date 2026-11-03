@@ -33,7 +33,14 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Correr los tests
-        # ChromeHeadless = sin ventana (CI no tiene pantalla).
-        # --watch=false = no se queda esperando.
-        run: npm test -- --watch=false --browsers=ChromeHeadless
+      - name: Correr los tests con cobertura
+        # test:ci ya incluye --watch=false, ChromeHeadless y --code-coverage.
+        run: npm run test:ci
+
+      - name: Subir cobertura a Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: front/coverage/front/lcov.info
+          flags: frontend
+          name: frontend
+          fail_ci_if_error: false
