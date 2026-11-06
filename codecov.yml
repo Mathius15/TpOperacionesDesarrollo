@@ -1,0 +1,33 @@
+# Configuracion de Codecov.
+# Los status son informativos: reportan y comentan en el PR, pero no lo bloquean.
+coverage:
+  precision: 2
+  round: down
+  status:
+    project:
+      default:
+        informational: true
+        target: auto
+        threshold: 2%
+    patch:
+      default:
+        informational: true
+        target: 70%
+
+flags:
+  backend:
+    paths:
+      - back/src/**
+  frontend:
+    paths:
+      - front/src/**
+
+ignore:
+  - "back/src/main.ts"
+  - "back/src/**/*.module.ts"
+  - "**/*.spec.ts"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
