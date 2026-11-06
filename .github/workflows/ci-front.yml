@@ -2,17 +2,54 @@ name: CI Front
 
 # Correr solo cuando cambian archivos de la carpeta front/.
 # Si no hay cambios en front/, este workflow ni se dispara.
+# workflow_dispatch permite correrlo a mano (util si solo cambia el workflow).
 on:
   push:
     branches: ['**']
     paths:
       - 'front/**'
+      - '.github/workflows/ci-front.yml'
+      - 'codecov.yml'
   pull_request:
     branches: ['**']
     paths:
       - 'front/**'
+      - '.github/workflows/ci-front.yml'
+      - 'codecov.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Si se pushea varias veces al mismo branch, cancela el run anterior.
+concurrency:
+  group: ci-front-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint-front:
+    name: Lint del frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: front
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr ESLint
+        run: npm run lint
+
   test-front:
     name: Tests del frontend
     runs-on: ubuntu-latest
@@ -43,4 +80,4 @@ jobs:
           files: front/coverage/front/lcov.info
           flags: frontend
           name: frontend
-          fail_ci_if_error: false
+          fail_ci_if_error: false #Si codecov falla, el CI no se pone rojo
