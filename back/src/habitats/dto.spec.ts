@@ -5,7 +5,9 @@ import { CreateHabitatDto } from './dto';
 // validate() devuelve la lista de errores: vacia = dato valido.
 async function errores(datos: object): Promise<string[]> {
   const dto = plainToInstance(CreateHabitatDto, datos);
-  return (await validate(dto)).map((e) => Object.values(e.constraints ?? {})[0]);
+  return (await validate(dto)).map(
+    (e) => Object.values(e.constraints ?? {})[0],
+  );
 }
 
 describe('CreateHabitatDto', () => {

@@ -2,17 +2,54 @@ name: CI Back
 
 # Correr solo cuando cambian archivos de la carpeta back/.
 # Si no hay cambios en back/, este workflow ni se dispara.
+# workflow_dispatch permite correrlo a mano (util si solo cambia el workflow).
 on:
   push:
     branches: ['**']
     paths:
       - 'back/**'
+      - '.github/workflows/ci-back.yml'
+      - 'codecov.yml'
   pull_request:
     branches: ['**']
     paths:
       - 'back/**'
+      - '.github/workflows/ci-back.yml'
+      - 'codecov.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Si se pushea varias veces al mismo branch, cancela el run anterior.
+concurrency:
+  group: ci-back-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint-back:
+    name: Lint del backend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: back
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: back/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr ESLint
+        run: npm run lint:ci
+
   test-back:
     name: Tests del backend
     runs-on: ubuntu-latest
@@ -33,5 +70,13 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Correr los tests
-        run: npm test
+      - name: Correr los tests con cobertura
+        run: npm run test:cov
+
+      - name: Subir cobertura a Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: back/coverage/lcov.info
+          flags: backend
+          name: backend
+          fail_ci_if_error: false #Si codecov falla, el CI no se pone rojo
