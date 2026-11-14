@@ -1,0 +1,92 @@
+# Postgres adentro del cluster.
+#
+# Detalles importantes:
+#  - replicas: 1. Una base de datos no se escala horizontalmente con replicas.
+#  - strategy: Recreate. El PVC es ReadWriteOnce: si Kubernetes intentara
+#    levantar un Pod nuevo antes de apagar el viejo, el nuevo quedaria
+#    esperando para siempre porque el disco esta tomado.
+#  - PGDATA apunta a un subdirectorio. Si se monta el volumen directo en
+#    /var/lib/postgresql/data, Postgres se queja porque el directorio no esta
+#    vacio (el volumen trae su propia metadata).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: tandil
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+
+          # La imagen oficial de Postgres crea el usuario y la base a partir
+          # de estas tres variables. Salen del Secret, no estan en texto plano
+          # dentro del manifiesto.
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_NAME
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+          # pg_isready devuelve 0 cuando la base ya acepta conexiones.
+          # readiness = "puede recibir trafico"; liveness = "esta vivo".
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc

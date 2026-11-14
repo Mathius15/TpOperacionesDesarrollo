@@ -1,0 +1,19 @@
+# Service del frontend con NodePort.
+#
+#   navegador -> <IP-minikube>:30080 -> Service:80 -> Pod:80
+#
+# 30080 porque esta fuera del rango que suele usar el backend (30000).
+# El puerto se fija a mano para que la URL no cambie entre despliegues.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: tandil
+spec:
+  type: NodePort
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080

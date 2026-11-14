@@ -122,6 +122,9 @@ npm start                 # http://localhost:4200
     └── ci-front.yml          # tests del frontend (dispara si cambia front/**)
 ```
 
+La carpeta `k8s/` con los manifiestos de Kubernetes se explica más abajo, en
+[Kubernetes (Minikube)](#kubernetes-minikube).
+
 ---
 
 ## Endpoints
@@ -195,6 +198,11 @@ docker pull mathius15/tandil-back:1.0
 docker pull mathius15/tandil-front:1.0
 ```
 
+> Además del tag `1.0` hay otros dos que se usan más adelante: `latest` (el que
+> usan Render y Kubernetes) y `k8s` en el front, compilado apuntando al backend
+> de Minikube. La URL de la API va dentro del bundle, así que cada entorno
+> necesita su propia imagen del front.
+
 ### Build multi-stage
 
 Los dos `Dockerfile` tienen **dos etapas**:
@@ -264,6 +272,160 @@ front:
   base. Por eso va `depends_on: db: condition: service_healthy`.
 - **Volumen:** `datos-db` guarda la base fuera de los contenedores. Sin él,
   cada `docker compose down` te borra los datos.
+
+---
+
+## Kubernetes (Minikube)
+
+La app también corre en un cluster de Kubernetes local con **Minikube**. Los
+manifiestos están en `k8s/` y se aplican con `kubectl`, igual que en un cluster
+real. Docker Compose y Kubernetes son dos formas alternativas de correr lo
+mismo: no hace falta levantar las dos.
+
+### Requisitos
+
+`minikube` y `kubectl` **no vienen con Docker**: hay que instalarlos aparte.
+Los binarios van a `~/.local/bin` para no necesitar `sudo`.
+
+```bash
+mkdir -p ~/.local/bin
+
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+install minikube-linux-amd64 ~/.local/bin/minikube
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+install kubectl ~/.local/bin/kubectl
+```
+
+Arrancar el cluster (usa Docker como driver, o sea que Minikube corre en un
+contenedor):
+
+```bash
+minikube start --driver=docker
+kubectl get nodes          # el nodo tiene que estar Ready
+```
+
+### Los objetos
+
+| Archivo | Objeto | Para qué |
+|---------|--------|----------|
+| `00-namespace.yaml` | `Namespace` | agrupa todo bajo `tandil` |
+| `01-postgres-secret.yaml` | `Secret` | usuario, password y nombre de la base |
+| `02-postgres-pvc.yaml` | `PersistentVolumeClaim` | 1 Gi de disco para la base |
+| `03-postgres-deployment.yaml` | `Deployment` | corre Postgres |
+| `04-postgres-service.yaml` | `Service` (ClusterIP) | le da el nombre `postgres` al backend |
+| `05-backend-deployment.yaml` | `Deployment` | corre NestJS |
+| `06-backend-service.yaml` | `Service` (NodePort) | expone la API en el puerto 30000 |
+| `07-frontend-deployment.yaml` | `Deployment` | corre nginx con Angular |
+| `08-frontend-service.yaml` | `Service` (NodePort) | expone la página en el puerto 30080 |
+
+Los nombres llevan número porque `kubectl apply -f k8s/` aplica **en orden
+alfabético**. Sin prefijos, `backend-deployment.yaml` se aplicaría antes que el
+Namespace y fallaría con `namespace "tandil" not found`.
+
+### Deployment y no Pod
+
+Un `Pod` es la unidad mínima: si se cae, nadie lo vuelve a crear. Un
+`Deployment` administra un `ReplicaSet`, que a su vez crea y repone los Pods.
+Además da *rolling updates* y rollback:
+
+```
+Deployment  ──crea──►  ReplicaSet  ──crea──►  Pods
+```
+
+Un Pod suelto se escribe en menos líneas, pero no se recupera solo, no escala y
+no tiene historial de versiones. Por eso los tres servicios usan `Deployment`.
+
+El `Service` es aparte: los Pods tienen IPs que cambian, el Service tiene un
+nombre fijo y reparte el tráfico entre los Pods que tengan su mismo `label`.
+
+### Los tres puertos
+
+```
+navegador ──► <IP-minikube>:30000 ──► Service:3000 ──► Pod:3000
+                 nodePort              port          targetPort
+```
+
+- `targetPort`: el puerto donde escucha el contenedor.
+- `port`: el puerto del Service, para uso interno del cluster.
+- `nodePort`: el puerto abierto en el nodo, para entrar desde afuera
+  (rango 30000-32767).
+
+### Publicar las imágenes
+
+Minikube con driver Docker **no comparte** el daemon de Docker del host, así que
+las imágenes se suben a Docker Hub y el cluster las baja de ahí.
+
+Primero hay que saber la IP del nodo, porque la URL de la API se compila dentro
+del front:
+
+```bash
+minikube ip
+```
+
+> En esta máquina dio `192.168.49.2`. Es la IP del contenedor de Minikube dentro
+> de la red de Docker, y en Linux se llega directo desde el navegador.
+
+Backend (es la misma imagen que usa Render):
+
+```bash
+docker build -t mathius15/tandil-back:latest ./back
+docker push mathius15/tandil-back:latest
+```
+
+Frontend, con un tag propio (`:k8s`) para no pisar la imagen que apunta a Render:
+
+```bash
+docker build -t mathius15/tandil-front:k8s \
+  --build-arg API_URL=http://<IP-minikube>:30000 ./front
+docker push mathius15/tandil-front:k8s
+```
+
+### Desplegar
+
+```bash
+kubectl apply -f k8s/
+kubectl get pods -n tandil
+kubectl get svc -n tandil
+```
+
+Se aplican todos los archivos del directorio. El backend reintenta la conexión a
+la base solo, así que no importa si Postgres tarda unos segundos más.
+
+Para mirar los logs:
+
+```bash
+kubectl logs -f deploy/backend -n tandil
+kubectl logs -f deploy/postgres -n tandil
+```
+
+### Ver la app
+
+```bash
+curl http://<IP-minikube>:30000/habitats
+minikube service frontend -n tandil --url
+minikube service frontend -n tandil        # abre el navegador
+```
+
+| Qué | URL |
+|-----|-----|
+| API | `http://<IP-minikube>:30000/habitats` |
+| Front | `http://<IP-minikube>:30080` |
+
+### Detalles que están así a propósito
+
+- **Backend con 1 réplica.** El seed carga datos solo si las tablas están
+  vacías; con dos réplicas arrancando juntas podrían duplicarse filas.
+- **Postgres con `strategy: Recreate`.** El volumen es `ReadWriteOnce`: no se
+  puede montar en dos Pods al mismo tiempo.
+- **`PGDATA` en un subdirectorio.** Si se monta el volumen directo en
+  `/var/lib/postgresql/data`, Postgres se queja porque el directorio no está
+  vacío.
+- **La IP de Minikube queda compilada en el front.** Si se borra el cluster
+  (`minikube delete`), la IP puede cambiar y hay que reconstruir la imagen
+  `:k8s`.
+- **Sin Ingress ni HPA.** Con NodePort alcanza para la práctica; un Ingress
+  necesitaría un controlador extra.
 
 ---
 

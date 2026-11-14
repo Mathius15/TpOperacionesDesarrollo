@@ -1,0 +1,19 @@
+# Un PersistentVolumeClaim (PVC) es un pedido de disco al cluster.
+# Kubernetes busca un volumen que cumpla el pedido y lo monta en el Pod.
+#
+# Minikube trae un StorageClass llamado "standard" que crea el volumen solo,
+# asi que no hace falta declarar el PersistentVolume a mano.
+#
+# ReadWriteOnce = el volumen lo puede montar UN solo nodo a la vez.
+# Por eso el Deployment de Postgres usa strategy: Recreate.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: tandil
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

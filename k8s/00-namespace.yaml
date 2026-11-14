@@ -1,0 +1,7 @@
+# Un Namespace es una "carpeta" dentro del cluster. Sirve para agrupar todos
+# los objetos de este TP y no mezclarlos con los del sistema (kube-system).
+# Todos los demas archivos llevan "namespace: tandil".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tandil

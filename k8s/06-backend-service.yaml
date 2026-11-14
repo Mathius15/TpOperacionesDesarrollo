@@ -1,0 +1,23 @@
+# Service del backend con NodePort.
+#
+# NodePort abre un puerto fijo (30000-32767) en el nodo, asi se puede entrar
+# desde el navegador sin Ingress ni balanceador externo.
+#
+#   navegador -> <IP-minikube>:30000 -> Service:3000 -> Pod:3000
+#                  nodePort            port        targetPort
+#
+# nodePort es opcional: si se omite, Kubernetes elige uno al azar. Lo fijamos
+# en 30000 porque la imagen del front tiene esa URL compilada adentro.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: tandil
+spec:
+  type: NodePort
+  selector:
+    app: backend
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30000

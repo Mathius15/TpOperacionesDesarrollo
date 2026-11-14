@@ -1,0 +1,89 @@
+# Backend NestJS.
+#
+# Detalles importantes:
+#  - replicas: 1. El seed carga datos solo si las tablas estan vacias. Con dos
+#    replicas arrancando a la vez, las dos podrian intentar sembrar y duplicar
+#    filas. Ademas DB_SYNC=true con dos instancias creando el esquema en
+#    paralelo puede chocar. Con 1 replica el TP funciona sin sorpresas.
+#  - La imagen es la misma que usa Render (mathius15/tandil-back:latest).
+#    El backend lee DB_* en runtime, asi que la imagen no cambia entre
+#    entornos: solo cambian las variables.
+#  - imagePullPolicy: Always obliga a bajar la imagen de Docker Hub en cada
+#    arranque del Pod. Sirve porque usamos el tag "latest", que se mueve.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: tandil
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: mathius15/tandil-back:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+
+          env:
+            - name: PORT
+              value: "3000"
+            # "postgres" es el nombre del Service de la base, no una IP.
+            # Kubernetes lo resuelve por DNS interno.
+            - name: DB_HOST
+              value: postgres
+            - name: DB_PORT
+              value: "5432"
+            # Para la practica: TypeORM crea las tablas solo al arrancar.
+            # En un proyecto real iria en false y se usarian migraciones.
+            - name: DB_SYNC
+              value: "true"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_NAME
+
+          # /habitats ya existe y responde JSON. Sirve como healthcheck.
+          # NestJS tarda en arrancar (compila y conecta a la base), por eso
+          # el initialDelaySeconds alto: si no, Kubernetes lo mata antes de
+          # que termine de iniciar y entra en un loop de reinicios.
+          readinessProbe:
+            httpGet:
+              path: /habitats
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /habitats
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

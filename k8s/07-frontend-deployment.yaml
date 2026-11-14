@@ -1,0 +1,58 @@
+# Frontend Angular servido por nginx.
+#
+# OJO con la imagen: NO es la misma que se publica para Render.
+# La URL de la API se compila dentro del bundle de Angular, asi que hay que
+# construir una imagen aparte apuntando al backend de Kubernetes:
+#
+#   docker build -t mathius15/tandil-front:k8s \
+#     --build-arg API_URL=http://<IP-minikube>:30000 ./front
+#
+# El tag :k8s existe justamente para no pisar la imagen :latest, que apunta
+# al backend de Render.
+#
+# 2 replicas: el front es sin estado (solo archivos estaticos), asi que se
+# puede escalar sin problema.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: tandil
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: mathius15/tandil-front:k8s
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+
+          # nginx responde "/" con el index.html de Angular.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

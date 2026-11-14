@@ -1,0 +1,19 @@
+# Service interno (ClusterIP). No se expone a internet: solo el backend
+# del cluster lo necesita.
+#
+# El nombre "postgres" es el que usa el backend como DB_HOST. Kubernetes
+# adentro resuelve ese nombre por DNS, igual que docker-compose resolvia "db".
+#
+# El selector tiene que coincidir con los labels del Pod de Postgres.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: tandil
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
